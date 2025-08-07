@@ -56,6 +56,13 @@ app.post('/create-checkout-session', async (req, res) => {
 
 app.listen(4242, () => console.log('Serveur Stripe en écoute sur le port 4242'));
 
+const PORT = process.env.PORT || 4242;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+  console.log(`📧 Email configuré avec: futbolerovintageshop@gmail.com`);
+  console.log(`🔑 Webhook secret configuré: ${process.env.STRIPE_WEBHOOK_SECRET ? 'OUI' : 'NON'}`);
+});
+
 
 const nodemailer = require('nodemailer');
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -186,4 +193,140 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (request, respon
   }
 
   response.json({ received: true });
+});
+
+// Endpoint de test pour webhook direct (debugging)
+app.post('/webhook-test', express.json(), async (req, res) => {
+  console.log('🧪 Test webhook direct reçu');
+  
+  try {
+    const event = req.body;
+    
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      console.log('✅ Test - Session:', session.id);
+      
+      // Traiter comme un vrai webhook
+      let customerData = {};
+      let itemsData = [];
+      
+      if (session.metadata?.customer_data) {
+        customerData = JSON.parse(session.metadata.customer_data);
+      }
+      if (session.metadata?.items_data) {
+        itemsData = JSON.parse(session.metadata.items_data);
+      }
+      
+      console.log('🧪 Test - Données client:', customerData);
+      console.log('🧪 Test - Articles:', itemsData);
+      
+      // Envoyer l'email de test
+      await envoyerEmailConfirmation(customerData, itemsData);
+      
+      res.json({ message: 'Email de test envoyé avec succès!', received: true });
+    } else {
+      res.json({ message: 'Type d\'événement non supporté pour le test', received: false });
+    }
+    
+  } catch (error) {
+    console.error('❌ Erreur test webhook:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint de test Gmail direct
+app.post('/test-email-direct', express.json(), async (req, res) => {
+  console.log('📧 Test Gmail direct demandé');
+  
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'futbolerovintageshop@gmail.com',
+        pass: process.env.GMAIL_APP_PASSWORD
+      }
+    });
+
+    const mailOptions = {
+      from: 'futbolerovintageshop@gmail.com',
+      to: 'futbolerovintageshop@gmail.com',
+      subject: 'Test Direct Gmail - Futbolero',
+      html: `
+        <h2>🧪 Test Direct Gmail</h2>
+        <p>Ce test vérifie que le système Gmail fonctionne correctement.</p>
+        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+        <p><strong>Configuration:</strong></p>
+        <ul>
+          <li>Service: Gmail</li>
+          <li>User: futbolerovintageshop@gmail.com</li>
+          <li>Password: ${process.env.GMAIL_APP_PASSWORD ? 'Configuré' : 'MANQUANT'}</li>
+        </ul>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Test Gmail réussi:', info.messageId);
+    
+    res.json({ 
+      success: true, 
+      message: 'Email de test envoyé avec succès!',
+      messageId: info.messageId 
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur test Gmail:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.toString() 
+    });
+  }
+});
+
+// Endpoint pour simuler webhook
+app.post('/simulate-webhook', express.json(), async (req, res) => {
+  console.log('🎯 Simulation webhook demandée');
+  
+  try {
+    const event = req.body;
+    
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      console.log('✅ Simulation webhook - Session:', session.id);
+      
+      let customerData = {};
+      let itemsData = [];
+      
+      if (session.metadata?.customer_data) {
+        customerData = JSON.parse(session.metadata.customer_data);
+      }
+      if (session.metadata?.items_data) {
+        itemsData = JSON.parse(session.metadata.items_data);
+      }
+      
+      console.log('🎯 Simulation - Données client:', customerData);
+      console.log('🎯 Simulation - Articles:', itemsData);
+      
+      // Envoyer l'email
+      await envoyerEmailConfirmation(customerData, itemsData);
+      
+      res.json({ 
+        success: true, 
+        message: 'Webhook simulé et email envoyé!',
+        sessionId: session.id 
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: 'Type d\'événement non supporté' 
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Erreur simulation webhook:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
